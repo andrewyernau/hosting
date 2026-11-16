@@ -1,0 +1,116 @@
+# Global monitoring, tailnet only: https://monitor.tail0ca86f.ts.net
+# No host ports, no Caddy, no VPS route. See README.md.
+name: monitoring
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  monitor-ts:
+    <<: *hardening
+    image: tailscale/tailscale:v1.104.2@sha256:b11583ad2e93e4671128538c88cf11f460444a5d7e449311dd1933a400ab849d
+    hostname: monitor
+    environment:
+      TS_AUTHKEY: ${MONITOR_TS_AUTHKEY:-}
+      TS_HOSTNAME: monitor
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_ACCEPT_DNS: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_AUTH_ONCE: "true"
+      TS_DEBUG_FIREWALL_MODE: nftables
+    volumes:
+      - ts_state:/var/lib/tailscale
+      - ./tailscale/serve.json:/config/serve.json:ro
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    cap_add: [NET_ADMIN]
+    networks: [metrics, egress]
+
+  grafana:
+    <<: *hardening
+    image: grafana/grafana:12.0.2
+    network_mode: service:monitor-ts
+    depends_on: [monitor-ts]
+    env_file: [secrets/grafana.env]
+    environment:
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_HTTP_ADDR: 127.0.0.1
+      GF_SERVER_ROOT_URL: https://monitor.tail0ca86f.ts.net
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+
+  prometheus:
+    <<: *hardening
+    image: prom/prometheus:v3.5.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=30d"]
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    networks: [metrics, kubo]
+
+  alertmanager:
+    <<: *hardening
+    image: prom/alertmanager:v0.28.1
+    # Runs as the owner of the 0600 mail password; silences live in memory.
+    user: "1000:1000"
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager", "--cluster.listen-address="]
+    tmpfs: ["/alertmanager:uid=1000,gid=1000,size=16m"]
+    volumes:
+      - ./alertmanager:/etc/alertmanager:ro
+      - ../mail/secrets/no-reply.pass:/run/smtp.pass:ro
+    networks: [metrics, egress]
+
+  # No host network: port 9100 must not reach the LAN. Hence no host NIC counters.
+  node-exporter:
+    <<: *hardening
+    image: prom/node-exporter:v1.9.1
+    pid: host
+    command: ["--path.procfs=/host/proc", "--path.sysfs=/host/sys", "--path.rootfs=/host/root", "--collector.textfile.directory=/textfile", "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|snap|var/lib/docker/.+)($$|/)"]
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+      - ./textfile:/textfile:ro
+    networks: [metrics]
+
+  cadvisor:
+    <<: *hardening
+    image: ghcr.io/google/cadvisor:0.56.2
+    command: ["--docker_only=true", "--housekeeping_interval=30s", "--store_container_labels=false", "--whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service", "--disable_metrics=advtcp,cpu_topology,cpuset,disk,hugetlb,memory_numa,percpu,process,referenced_memory,resctrl,sched,tcp,udp"]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    networks: [metrics]
+
+  # Outbound SSH to loopback-only exporters on the VPS. The VPS cannot dial back.
+  vps:
+    <<: *hardening
+    build: ./vps-tunnel
+    image: monitoring-vps-tunnel:local
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    volumes:
+      - ./secrets/vps_ed25519:/run/key:ro
+      - ./vps-tunnel/known_hosts:/run/known_hosts:ro
+    networks: [metrics, egress]
+
+networks:
+  metrics: {internal: true}
+  egress: {}
+  kubo:
+    name: yernau-gaming_observability
+    external: true
+
+volumes:
+  ts_state:
+    external: true
+    name: monitoring_ts_state
+  grafana_data:
+  prometheus_data:

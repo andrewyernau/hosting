@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# The panel is an app behind a login: every response carries X-Robots-Tag noindex.
+# Public pages live at https://kubo.csmak.com/

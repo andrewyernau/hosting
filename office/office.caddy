@@ -1,0 +1,25 @@
+# Collabora Online (editor de ofimática de Bulwark) · instalar como /opt/selfhost/caddy/sites/office.caddy del Caddy central
+# (~/hosting/scripts/45-install-caddy-site.sh ~/hosting/office/office.caddy office.caddy). DNS en gris hacia vps-proxy.
+# Un solo coolwsd (office-collabora:9980, selfhost_proxy) para los dos dominios; deriva sus URLs del Host.
+
+http://office.csmak.com, http://office.cottonstream.es {
+	redir https://{host}{uri} permanent
+}
+
+https://office.csmak.com, https://office.cottonstream.es {
+	encode zstd gzip
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Robots-Tag "noindex, nofollow"
+	}
+
+	# Nada de consola de administración, métricas ni API REST de conversión (servicio abierto para cualquiera).
+	# coolwsd ya las rechaza (admin_console off, post_allow solo loopback); esto es la segunda barrera.
+	@blocked path /browser/dist/admin/* /cool/adminws /cool/getMetrics /cool/convert-to* /cool/extract-* /cool/render-search-result* /lool/convert-to*
+	respond @blocked 404
+
+	reverse_proxy office-collabora:9980 {
+		header_up X-Forwarded-Proto https
+	}
+}

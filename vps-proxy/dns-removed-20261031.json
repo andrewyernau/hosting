@@ -1,0 +1,2 @@
+{"type":"A","name":"ptylabs.yernau.com","content":"143.20.32.134","proxied":false,"ttl":300}
+{"type":"CNAME","name":"nova.yernau.com","content":"ae34e6e0-29f6-4c7b-8240-4094b1b60431.cfargotunnel.com","proxied":true,"ttl":1}

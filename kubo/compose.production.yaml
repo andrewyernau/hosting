@@ -1,0 +1,109 @@
+name: yernau-gaming
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+      - ./source/postgres/00-extensions.sql:/docker-entrypoint-initdb.d/00-extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=$${POSTGRES_PASSWORD} psql -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB} -tAc 'SELECT 1' >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [data, observability]
+    security_opt: [no-new-privileges:true]
+
+  migrate:
+    build: {context: ./source, dockerfile: api/Dockerfile, target: runtime}
+    command: ["bun", "/app/api/src/db/migrate.ts"]
+    env_file: [.env]
+    depends_on: {postgres: {condition: service_healthy}}
+    networks: [data]
+    restart: "no"
+
+  api:
+    build: {context: ./source, dockerfile: api/Dockerfile, target: runtime}
+    command: ["bun", "/app/api/src/index.ts"]
+    env_file: [.env]
+    restart: unless-stopped
+    depends_on: {migrate: {condition: service_completed_successfully}}
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:3000/api/v1/health/live').then(r=>{if(!r.ok)process.exit(1)})"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      # gaming-web reaches the API as kubo-api: "api" is ambiguous on selfhost_proxy.
+      app: {aliases: [kubo-api]}
+      data: {}
+      observability: {}
+      egress: {}
+      panel-api: {}
+    security_opt: [no-new-privileges:true]
+
+  worker:
+    build: {context: ./source, dockerfile: api/Dockerfile, target: runtime}
+    command: ["bun", "/app/api/src/worker.ts"]
+    env_file: [.env]
+    restart: unless-stopped
+    depends_on: {migrate: {condition: service_completed_successfully}}
+    networks: [data, observability, egress, panel-api]
+    security_opt: [no-new-privileges:true]
+
+  web:
+    build:
+      context: ./source
+      dockerfile: frontend/Dockerfile
+      args:
+        TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+    restart: unless-stopped
+    expose: ["8080"]
+    depends_on: {api: {condition: service_healthy}}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      app: {}
+      proxy: {aliases: [gaming-web]}
+    security_opt: [no-new-privileges:true]
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    profiles: [monitoring]
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: ${DATABASE_URL}?sslmode=disable
+    networks: [data, observability]
+    security_opt: [no-new-privileges:true]
+
+  backup:
+    build: {context: ./source/infra/backup}
+    profiles: [ops]
+    environment:
+      PGHOST: postgres
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes: ["./backups:/backups"]
+    networks: [data]
+
+networks:
+  app: {internal: true}
+  data: {internal: true}
+  observability: {internal: true}
+  egress: {}
+  proxy:
+    name: selfhost_proxy
+    external: true
+  panel-api:
+    name: gaming_panel_api
+    external: true

@@ -1,0 +1,59 @@
+# Correo csmak.com y cottonstream.es · instalar como /opt/selfhost/caddy/sites/mail.caddy del Caddy CENTRAL
+# (~/hosting/scripts/45-install-caddy-site.sh ~/hosting/mail/mail.caddy mail.caddy). DNS en gris hacia vps-proxy.
+# webmail.csmak.com = Bulwark (10.203.66.5), webmail.cottonstream.es = Bulwark (10.203.66.6);
+# mail.csmak.com y mail.cottonstream.es = JMAP de Stalwart (10.203.66.4:8080, HTTP plano).
+# El panel /admin de Stalwart no se publica: solo por 127.0.0.1:8080 en el miniPC.
+
+http://webmail.csmak.com, http://mail.csmak.com, http://webmail.cottonstream.es, http://mail.cottonstream.es {
+	redir https://{host}{uri} permanent
+}
+
+https://webmail.csmak.com {
+	encode zstd gzip
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Robots-Tag "noindex, nofollow"
+	}
+	reverse_proxy 10.203.66.5:3000 {
+		header_up X-Forwarded-Proto https
+	}
+}
+
+https://webmail.cottonstream.es {
+	encode zstd gzip
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Robots-Tag "noindex, nofollow"
+	}
+	reverse_proxy 10.203.66.6:3000 {
+		header_up X-Forwarded-Proto https
+	}
+}
+
+https://mail.csmak.com, https://mail.cottonstream.es {
+	header -Server
+	@admin path /admin /admin/*
+	handle @admin {
+		respond 404
+	}
+
+	# Stalwart lee una sola entrada de X-Forwarded-For (forwardedHops 1): la del navegador.
+	# Bulwark (10.203.66.5 y .6) llega directo por edge_tunnel y ya trae la IP del navegador: se respeta;
+	# cualquier otro cliente (Bulwark sin cabecera incluido) recibe la suya, sin poder inyectar otra.
+	@bulwark {
+		remote_ip 10.203.66.5 10.203.66.6
+		header X-Forwarded-For *
+	}
+	handle @bulwark {
+		reverse_proxy 10.203.66.4:8080 {
+			header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+		}
+	}
+	handle {
+		reverse_proxy 10.203.66.4:8080 {
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+}

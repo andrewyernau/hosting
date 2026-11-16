@@ -1,0 +1,45 @@
+#!/bin/sh
+# Crea (o actualiza) un buzón sin reaplicar el plan entero.
+# Uso: ./new-user <nombre>[@dominio] ["descripción"]   (dominio por defecto csmak.com)
+# Genera la contraseña en secrets/<nombre>.pass (csmak.com) o secrets/<nombre>@<dominio>.pass
+# (si no existe) y la muestra al final.
+set -eu
+cd "$(dirname "$0")"
+addr="${1:?uso: ./new-user <nombre>[@dominio] [\"descripción\"]}"
+desc="${2:-}"
+case "$addr" in *@*) name="${addr%@*}"; domain="${addr#*@}";; *) name="$addr"; domain="csmak.com";; esac
+case "$name" in ''|*[!a-z0-9._-]*|.*|*.) echo "nombre no válido: $name (a-z 0-9 . _ -)" >&2; exit 1;; esac
+if [ "$domain" = csmak.com ]; then
+	case "$name" in admin|andrew|no-reply) echo "$name está gestionado por plan.py" >&2; exit 1;; esac
+	pass="secrets/$name.pass"
+else
+	pass="secrets/$name@$domain.pass"
+fi
+
+if [ ! -s "$pass" ]; then
+	umask 077
+	openssl rand -base64 24 | tr -d '/+=\n' > "$pass"
+fi
+
+# Id del dominio en Stalwart (columna Id de `./scli query Domain`).
+dom="$(./scli query Domain --no-color 2>/dev/null | awk -v d="$domain" '$2 == d {print $1}')"
+[ -n "$dom" ] || { echo "no encuentro el dominio $domain" >&2; exit 1; }
+
+# El nombre se repite entre dominios (no-reply@csmak.com y no-reply@cottonstream.es): el upsert casa por los dos.
+python3 - "$name" "$desc" "$pass" "$dom" <<'EOF' | ./scli apply --stdin
+import json, sys
+name, desc, pw, dom = sys.argv[1], sys.argv[2], open(sys.argv[3]).read().strip(), sys.argv[4]
+acc = {"@type": "User", "name": name, "domainId": dom, "roles": {"@type": "User"},
+       "credentials": {"0": {"@type": "Password", "secret": pw}}}
+if desc:
+    acc["description"] = desc
+print(json.dumps({"@type": "upsert", "object": "Account", "matchOn": ["name", "domainId"], "value": {"u": acc}}))
+EOF
+
+entry="$name"; [ "$domain" = csmak.com ] || entry="$name@$domain"
+grep -qx "$entry" users 2>/dev/null || echo "$entry" >> users
+case "$domain" in csmak.com) webmail=https://webmail.csmak.com;; *) webmail="https://webmail.$domain";; esac
+echo
+echo "Buzón:      $name@$domain"
+echo "Contraseña: $(cat "$pass")   (guardada en $pass)"
+echo "Webmail:    $webmail"

@@ -1,0 +1,30 @@
+# Collabora Online (CODE): office editor for Bulwark's Files, one instance for both domains.
+# https://office.csmak.com (webmail.csmak.com) and https://office.cottonstream.es (webmail.cottonstream.es)
+# via the central Caddy, site office.caddy. Config in coolwsd.xml (./office.sh config). See README.md.
+name: office
+
+services:
+  collabora:
+    # 26.04.6.1.1, provenance: Docker Hub collabora/code:26.04.6.1.1 (multi-arch index digest)
+    image: collabora/code:26.04.6.1.1@sha256:95f29f1c0a1778999125f53f058d968fe0afb37c95e32ebfb9f3444140faebd2
+    restart: unless-stopped
+    # Jails need these (coolforkit-caps file capabilities); no-new-privileges would break them.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, SYS_CHROOT]
+    volumes:
+      - ./coolwsd.xml:/etc/coolwsd/coolwsd.xml:ro
+    healthcheck:
+      test: ["CMD", "/usr/bin/coolwsd", "--probe"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      proxy:
+        aliases: ["office-collabora"]
+    mem_limit: 2g
+
+networks:
+  proxy:
+    name: selfhost_proxy
+    external: true

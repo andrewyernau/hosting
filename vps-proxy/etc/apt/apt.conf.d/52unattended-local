@@ -1,0 +1,3 @@
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "05:30";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";

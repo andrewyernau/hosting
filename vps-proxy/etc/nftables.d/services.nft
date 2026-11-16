@@ -1,0 +1,12 @@
+# Edge services relayed to home by HAProxy / mc-router.
+# Web is grey-cloud (LaLiga blocks Cloudflare IPs in Spain): open to all, per-IP budget.
+tcp dport { 80, 443 } ct state new meter web_v4 { ip saddr limit rate 300/minute burst 150 packets } accept
+tcp dport 8443 ct state new meter wings_v4 { ip saddr limit rate 120/minute burst 60 packets } accept
+tcp dport 2022 ct state new meter sftp_v4 { ip saddr limit rate 20/minute burst 10 packets } accept
+tcp dport 25565 ct state new meter mc_v4 { ip saddr limit rate 30/minute burst 20 packets } accept
+tcp dport 25550-25580 ct state new meter games_v4 { ip saddr limit rate 30/minute burst 20 packets } accept
+# Mail (Stalwart at home): SMTP from any MTA; submission/IMAP per-IP budget (auto-ban is in Stalwart).
+tcp dport 25 ct state new meter smtp_v4 { ip saddr limit rate 60/minute burst 30 packets } accept
+tcp dport { 465, 587, 993 } ct state new meter mailc_v4 { ip saddr limit rate 30/minute burst 20 packets } accept
+# Outbound relay: only Stalwart (via the home tunnel end) may use HAProxy 10.66.0.1:2465 -> Resend.
+iifname "wg0" ip saddr 10.66.0.2 ip daddr 10.66.0.1 tcp dport 2465 accept

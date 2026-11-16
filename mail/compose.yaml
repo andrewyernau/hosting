@@ -1,0 +1,116 @@
+# Stalwart mail server (csmak.com pilot). Public ports arrive only through the
+# vps-proxy tunnel (edge-tunnel DNATs 25/465/587/993 to 10.203.66.4 with PROXY v2);
+# outbound mail leaves through Resend via the VPS (smtp.resend.com:2465 -> 10.203.66.2 -> VPS -> :465).
+name: mail
+
+services:
+  stalwart:
+    image: stalwartlabs/stalwart:v1.0.0
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: ./secrets/stalwart.env
+        required: false
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      # Admin/management API, loopback only (ssh -L 8080:127.0.0.1:8080 minipc).
+      - "127.0.0.1:8080:8080"
+    extra_hosts:
+      # Relay connections go through the tunnel so Resend never sees the home IP.
+      - "smtp.resend.com:10.203.66.2"
+    volumes:
+      - etc:/etc/stalwart
+      - data:/var/lib/stalwart
+    networks:
+      default: {}
+      edge:
+        ipv4_address: 10.203.66.4
+    mem_limit: 1g
+
+  # Webmail (https://webmail.csmak.com via Caddy). Browsers talk JMAP to https://mail.csmak.com directly;
+  # Bulwark's own server-side calls reach the same URL through Caddy on edge_tunnel (extra_hosts), and
+  # Caddy passes Bulwark's X-Forwarded-For so Stalwart's auto-ban counts the browser, not Bulwark.
+  bulwark:
+    # 1.21.2, provenance: bulwarkmail/webmail tag 1.21.2, workflow "Docker: Release image" (2026-11-12)
+    image: ghcr.io/bulwarkmail/webmail:1.21.2@sha256:037b85b1433233d2d7eebb83f928df5ecc3b4adc91dc7e4c55f0a2f69024e754
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      APP_NAME: "Correo csmak"
+      JMAP_SERVER_URL: "https://mail.csmak.com"
+      STALWART_VERSION: "1.0.0"
+      STALWART_ADMIN_ACCESS: "auto"
+      BULWARK_TELEMETRY: "off"
+      SEARCH_ENGINE_INDEXING: "false"
+      SETTINGS_SYNC_ENABLED: "true"
+      TRUSTED_PROXY_DEPTH: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Office editing in Files: Collabora in ~/hosting/office (one coolwsd, one hostname per domain).
+      WOPI_CLIENT_URL: "https://office.csmak.com"
+    extra_hosts:
+      - "mail.csmak.com:10.203.66.3"
+      - "office.csmak.com:10.203.66.3"
+    volumes:
+      - bulwark_admin:/app/data/admin
+      - bulwark_state:/app/data/admin-state
+      - bulwark_settings:/app/data/settings
+    networks:
+      default: {}
+      edge:
+        ipv4_address: 10.203.66.5
+    mem_limit: 512m
+    depends_on: [stalwart]
+
+  # Webmail for cottonstream.es (https://webmail.cottonstream.es), same Stalwart behind https://mail.cottonstream.es.
+  # Own instance so the name and settings are Cotton Stream's; no Stalwart admin panel here.
+  bulwark-cottonstream:
+    image: ghcr.io/bulwarkmail/webmail:1.21.2@sha256:037b85b1433233d2d7eebb83f928df5ecc3b4adc91dc7e4c55f0a2f69024e754
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      APP_NAME: "Correo Cotton Stream"
+      JMAP_SERVER_URL: "https://mail.cottonstream.es"
+      STALWART_VERSION: "1.0.0"
+      BULWARK_TELEMETRY: "off"
+      SEARCH_ENGINE_INDEXING: "false"
+      SETTINGS_SYNC_ENABLED: "true"
+      TRUSTED_PROXY_DEPTH: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Office editing in Files: Collabora in ~/hosting/office (one coolwsd, one hostname per domain).
+      WOPI_CLIENT_URL: "https://office.cottonstream.es"
+    extra_hosts:
+      - "mail.cottonstream.es:10.203.66.3"
+      - "office.cottonstream.es:10.203.66.3"
+    volumes:
+      - bulwark_cs_settings:/app/data/settings
+    networks:
+      default: {}
+      edge:
+        ipv4_address: 10.203.66.6
+    mem_limit: 512m
+    depends_on: [stalwart]
+
+volumes:
+  etc:
+    name: mail_etc
+    external: true
+  data:
+    name: mail_data
+    external: true
+  bulwark_admin:
+  bulwark_state:
+  bulwark_settings:
+  bulwark_cs_settings:
+
+networks:
+  edge:
+    name: edge_tunnel
+    external: true

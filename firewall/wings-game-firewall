@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Rebuild the narrow Docker ingress policy for Wings game allocations.
+# Rules are scoped to packets routed towards the Wings bridge only; other
+# Docker networks and host services are deliberately outside this policy.
+
+set -Eeuo pipefail
+
+NETWORK=wings_nw
+CHAIN=WINGS-GAME-INGRESS
+PORTS_FILE=/etc/wings/firewall/allowed-game-ports.conf
+
+# Calagopus Wings names a newly created bridge after the network itself. Ask Docker first; if the
+# network does not exist yet, Wings will create it with the network name as bridge name.
+BRIDGE=$(docker network inspect "$NETWORK" --format '{{index .Options "com.docker.network.bridge.name"}}' 2>/dev/null || true)
+[[ -n $BRIDGE ]] || BRIDGE=$NETWORK
+
+external_interface=$(ip -4 route show default | awk 'NR == 1 { print $5 }')
+[[ -n $external_interface ]] || { printf 'No IPv4 default-route interface found.\n' >&2; exit 1; }
+[[ -r $PORTS_FILE ]] || { printf 'Missing port allowlist: %s\n' "$PORTS_FILE" >&2; exit 1; }
+
+# Docker owns DOCKER-USER but intentionally leaves custom chains available to
+# administrators. Rebuild our own chain atomically enough for this empty/low
+# traffic first-node stage, then hook it at the beginning of DOCKER-USER.
+iptables -w -N "$CHAIN" 2>/dev/null || true
+iptables -w -F "$CHAIN"
+while iptables -w -D DOCKER-USER -o "$BRIDGE" -j "$CHAIN" 2>/dev/null; do :; done
+iptables -w -I DOCKER-USER 1 -o "$BRIDGE" -j "$CHAIN"
+
+# Return traffic for an established client session must reach the container.
+iptables -w -A "$CHAIN" -i "$external_interface" \
+  -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+
+# Each entry authorizes a published host port after Docker's DNAT has occurred,
+# so match conntrack's original destination rather than the internal port.
+while read -r protocol port_spec _description; do
+  [[ -z ${protocol:-} || $protocol == \#* ]] && continue
+  [[ $protocol == tcp || $protocol == udp ]] || {
+    printf 'Invalid protocol in %s: %s\n' "$PORTS_FILE" "$protocol" >&2; exit 1;
+  }
+  if [[ $port_spec =~ ^[0-9]+$ ]]; then
+    [[ $port_spec -ge 1 && $port_spec -le 65535 ]] || {
+      printf 'Invalid port in %s: %s\n' "$PORTS_FILE" "$port_spec" >&2; exit 1;
+    }
+    conntrack_port=$port_spec
+  elif [[ $port_spec =~ ^([0-9]+)-([0-9]+)$ ]]; then
+    range_start=${BASH_REMATCH[1]}
+    range_end=${BASH_REMATCH[2]}
+    [[ $range_start -ge 1 && $range_end -le 65535 && $range_start -le $range_end ]] || {
+      printf 'Invalid port range in %s: %s\n' "$PORTS_FILE" "$port_spec" >&2; exit 1;
+    }
+    conntrack_port="$range_start:$range_end"
+  else
+    printf 'Invalid port or port range in %s: %s\n' "$PORTS_FILE" "$port_spec" >&2
+    exit 1
+  fi
+  iptables -w -A "$CHAIN" -i "$external_interface" -p "$protocol" \
+    -m conntrack --ctstate NEW --ctorigdstport "$conntrack_port" -j RETURN
+done <"$PORTS_FILE"
+
+# Everything else arriving from the LAN/Internet towards a game container is
+# dropped before Docker's permissive published-port rules. Traffic from other
+# local Docker networks is intentionally not altered here.
+iptables -w -A "$CHAIN" -i "$external_interface" -j DROP

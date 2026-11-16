@@ -1,0 +1,42 @@
+groups:
+  - name: global
+    rules:
+      - alert: ExporterDown
+        expr: up{job=~"node|cadvisor|haproxy"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.job }} on {{ $labels.instance }} is not reporting"}
+      - alert: SiteDown
+        expr: probe_success{job=~"web|tcp|tls"} == 0
+        for: 3m
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.instance }} does not answer from the VPS"}
+      - alert: CertificateExpiring
+        expr: probe_ssl_earliest_cert_expiry - time() < 14 * 86400
+        for: 1h
+        labels: {severity: warning}
+        annotations: {summary: "The certificate of {{ $labels.instance }} expires in under 14 days"}
+      - alert: DiskAlmostFull
+        expr: 1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"} > 0.85
+        for: 15m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} is over 85% full"}
+      - alert: MemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.1
+        for: 15m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.instance }} has under 10% memory available"}
+      - alert: ContainerRestarting
+        expr: changes(container_start_time_seconds{name!=""}[30m]) > 3
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.name }} restarted more than 3 times in 30 minutes"}
+      # Presence only: the password manager stays off every network path of this stack.
+      - alert: VaultwardenStopped
+        expr: absent(container_last_seen{name="vaultwarden-vaultwarden-1"})
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "The Vaultwarden container is not running"}
+      - alert: BackupStale
+        expr: time() - backup_last_success_timestamp_seconds > 36 * 3600
+        labels: {severity: critical}
+        annotations: {summary: "Backup {{ $labels.backup }} has not succeeded in 36 hours"}

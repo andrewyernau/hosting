@@ -1,0 +1,24 @@
+http://__LIVESYNC_FQDN__ {
+	redir https://{host}{uri} permanent
+}
+
+https://__LIVESYNC_FQDN__ {
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		X-Robots-Tag "noindex, nofollow, noarchive, nosnippet, noimageindex"
+	}
+
+	# LiveSync uses CouchDB's long-lived _changes responses. Immediate flushing
+	# prevents a reverse-proxy buffer from delaying synchronisation progress.
+	reverse_proxy livesync-couchdb:5984 {
+		flush_interval -1
+		header_up Host {host}
+		header_up X-Forwarded-Host {host}
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-For {remote_host}
+	}
+}

@@ -1,0 +1,21 @@
+[Unit]
+Description=Sync mc-router routes from Cloudflare SRV records
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/mc-router/cloudflare-dns-read.token
+
+[Service]
+Type=oneshot
+Environment="ZONE_IDS=60c872a2f4c92132e721926fbfbb55cb"
+LoadCredential=cf-token:/etc/mc-router/cloudflare-dns-read.token
+ExecStart=/usr/local/bin/mc-routes-sync
+User=mc-routes
+Group=mc-routes
+ReadWritePaths=/etc/mc-router/routes.json
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service

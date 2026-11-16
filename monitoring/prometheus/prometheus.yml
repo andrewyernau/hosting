@@ -1,0 +1,64 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files: ["/etc/prometheus/rules/*.yml"]
+
+alerting:
+  alertmanagers:
+    - static_configs: [{targets: ["alertmanager:9093"]}]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs: [{targets: ["prometheus:9090"]}]
+  - job_name: node
+    static_configs:
+      - {targets: ["node-exporter:9100"], labels: {instance: minipc}}
+      - {targets: ["vps:9100"], labels: {instance: vps}}
+  - job_name: cadvisor
+    static_configs: [{targets: ["cadvisor:8080"], labels: {instance: minipc}}]
+  - job_name: haproxy
+    static_configs: [{targets: ["vps:8405"], labels: {instance: vps}}]
+  - job_name: gaming-api
+    static_configs: [{targets: ["api:3000"]}]
+  - job_name: gaming-worker
+    static_configs: [{targets: ["worker:9464"]}]
+  - job_name: gaming-postgres
+    static_configs: [{targets: ["postgres-exporter:9187"]}]
+
+  # Probes run on the VPS, so they cross the public path: HAProxy, tunnel, Caddy, app.
+  - job_name: web
+    metrics_path: /probe
+    scrape_interval: 60s
+    params: {module: [http_up]}
+    static_configs:
+      - targets:
+          - https://kubo.csmak.com/
+          - https://panel.kubo.csmak.com/
+          - https://csmak.com/
+          - https://yernau.com/
+          - https://nutria.csmak.com/
+          - https://kebab-oriental.com/
+          - https://ajgambitopt.com/
+          - https://tracker.yernau.com/
+          - https://livesync.yernau.com/
+          - https://webmail.csmak.com/
+          - https://mail.csmak.com/
+    relabel_configs: &probe
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__param_target], target_label: instance}
+      - {target_label: __address__, replacement: "vps:9115"}
+  - job_name: tcp
+    metrics_path: /probe
+    scrape_interval: 60s
+    params: {module: [tcp_up]}
+    static_configs:
+      - targets: ["mail.csmak.com:25", "es1.kubo.csmak.com:25565", "es1.kubo.csmak.com:8443", "es1.kubo.csmak.com:2022"]
+    relabel_configs: *probe
+  - job_name: tls
+    metrics_path: /probe
+    scrape_interval: 60s
+    params: {module: [tls_up]}
+    static_configs:
+      - targets: ["mail.csmak.com:465", "mail.csmak.com:993"]
+    relabel_configs: *probe

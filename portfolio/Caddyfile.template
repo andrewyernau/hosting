@@ -1,0 +1,33 @@
+http://yernau.com, http://www.yernau.com {
+	redir https://yernau.com{uri} permanent
+}
+
+https://www.yernau.com {
+	redir https://yernau.com{uri} permanent
+}
+
+https://yernau.com {
+
+	encode zstd gzip
+
+	# Third-party ownership verification. Keep the response body exact.
+	handle /afectadosporlaliga.html {
+		header Content-Type "text/html; charset=utf-8"
+		respond "53ed56e27e852ddd" 200
+	}
+
+	@search_files path /robots.txt /sitemap.xml /sitemap-main.xml /f00e3679abae4fb38562d8f5f413e7b7.txt
+	handle @search_files {
+		root * /etc/caddy/sites/seo/yernau
+		file_server
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	handle {
+		reverse_proxy portfolio-web:8080
+	}
+}

@@ -1,0 +1,36 @@
+name: edge-tunnel
+
+services:
+  edge:
+    build: .
+    image: edge-tunnel:local
+    restart: unless-stopped
+    env_file: edge.env
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    sysctls:
+      net.ipv4.ip_forward: "1"
+      net.ipv4.conf.all.rp_filter: "1"
+    secrets: [wg_home_key]
+    networks:
+      edge:
+        ipv4_address: 10.203.66.2
+    healthcheck:
+      test: ["CMD-SHELL", "t=$$(wg show wg0 latest-handshakes | awk '{print $$2}'); [ -n \"$$t\" ] && [ $$(( $$(date +%s) - t )) -lt 180 ]"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+networks:
+  edge:
+    name: edge_tunnel
+    ipam:
+      config:
+        - subnet: 10.203.66.0/29
+
+secrets:
+  wg_home_key:
+    file: ./secrets/wg-home.key

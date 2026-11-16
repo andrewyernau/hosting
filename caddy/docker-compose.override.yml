@@ -1,0 +1,25 @@
+# Installed as /opt/selfhost/caddy/docker-compose.override.yml (auto-loaded by compose).
+services:
+  caddy:
+    image: caddy-cloudflare:2.11.4
+    build: !reset null
+    ports: !override
+      # Bind only to the static LAN address so Tailscale Serve can own
+      # HTTPS on 100.112.34.19 and fd7a:115c:a1e0::f701:22c3.
+      - "192.168.0.111:80:80"
+      - "192.168.0.111:443:443"
+    volumes:
+      - ./secrets/cloudflare_api_token:/run/secrets/cloudflare_api_token:ro
+    networks:
+      # Fixed so that Calagopus APP_TRUSTED_PROXIES (CADDY_PROXY_IP) keeps pointing at Caddy.
+      proxy:
+        ipv4_address: 172.21.0.13
+      # vps-proxy: edge-tunnel forwards 80/443 here with PROXY protocol
+      # (allowed in the Caddyfile only from 10.203.66.2).
+      edge:
+        ipv4_address: 10.203.66.3
+
+networks:
+  edge:
+    name: edge_tunnel
+    external: true

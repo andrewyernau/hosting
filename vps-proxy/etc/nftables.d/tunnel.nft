@@ -1,0 +1,6 @@
+# Traffic the VPS may send into the home tunnel (defense in depth; home enforces too).
+define HOME_EDGE = 10.66.0.2
+define HOME_PORTS = { 25, 80, 443, 465, 587, 993, 2022, 8443, 25550-25580 }
+# Game UDP (Bedrock, GeyserMC, Steam games) is DNATed to the home end, not proxied: same range as TCP.
+define VPS_PUBLIC = 143.20.32.134
+define GAME_UDP_PORTS = 25550-25580

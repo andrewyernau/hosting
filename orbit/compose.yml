@@ -1,0 +1,76 @@
+# Orbit solo en la tailnet (https://orbit.tail0ca86f.ts.net). Ver README.md.
+#
+# Fronteras, igual que Vaultwarden y Grafana:
+# - Ningún puerto en el host, ni Caddy, ni selfhost_proxy, ni edge_tunnel/VPS.
+# - orbit comparte el netns del sidecar y escucha solo en 127.0.0.1:8080: solo
+#   `tailscale serve` (HTTPS 443) llega a él.
+# - Funnel prohibido en serve.json, ni siquiera AllowFunnel: false.
+name: orbit
+
+services:
+  orbit-ts:
+    image: tailscale/tailscale:v1.104.2@sha256:b11583ad2e93e4671128538c88cf11f460444a5d7e449311dd1933a400ab849d
+    hostname: orbit
+    restart: unless-stopped
+    environment:
+      # Solo se pasa en el primer alta (./orbit.sh login); después se vacía.
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_HOSTNAME: orbit
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_ACCEPT_DNS: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_AUTH_ONCE: "true"
+      TS_DEBUG_FIREWALL_MODE: nftables
+    volumes:
+      - ts_state:/var/lib/tailscale
+      - ./serve.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - egress
+
+  orbit:
+    # v0.2.1. Antes de subir de versión: copia verificada (las migraciones no se deshacen).
+    image: ghcr.io/coollabsio/orbit:0.2.1@sha256:4ab1882b427a35cb9caa49f1694e14745b66c4d964b4223b6704a94b7a81ce61
+    restart: unless-stopped
+    network_mode: service:orbit-ts
+    depends_on:
+      - orbit-ts
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    stop_grace_period: 40s
+    env_file:
+      - secrets/orbit.env
+    environment:
+      ORBIT_BIND: 127.0.0.1
+      ORBIT_PUBLIC_ORIGIN: https://orbit.tail0ca86f.ts.net
+      ORBIT_TRUSTED_PROXIES: 127.0.0.1/32
+    volumes:
+      - data:/var/lib/orbit
+      - backups:/var/backups/orbit
+
+networks:
+  egress:
+    name: orbit_egress
+
+# external: los crea ./orbit.sh init y `docker compose down -v` nunca los borra.
+volumes:
+  data:
+    name: orbit_data
+    external: true
+  backups:
+    name: orbit_backups
+    external: true
+  ts_state:
+    name: orbit_ts_state
+    external: true

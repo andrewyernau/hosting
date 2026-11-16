@@ -1,0 +1,32 @@
+#!/bin/sh
+# Build mc-router routes from the _minecraft._tcp SRV records the gaming app (Kubo)
+# writes in Cloudflare: <host> -> 10.66.0.2:<port> for ports 25550-25580.
+# A customer's verified domain arrives as _minecraft._tcp.<domain>.routes.kubo.csmak.com, because
+# its own zone is not ours: the suffix is stripped so the route matches what players type.
+# ZONE_IDS: space-separated Cloudflare zone IDs. Needs a DNS:Read token (credential cf-token).
+set -eu
+ZONE_IDS=${ZONE_IDS:?}
+BACKEND=${BACKEND:-10.66.0.2}
+OUT=${OUT:-/etc/mc-router/routes.json}
+ROUTES_SUFFIX=${ROUTES_SUFFIX:-routes\\.kubo\\.csmak\\.com}
+TOKEN=$(tr -d "[:space:]" < "$CREDENTIALS_DIRECTORY/cf-token")
+cfg=$(mktemp); all=$(mktemp); trap "rm -f $cfg $all" EXIT
+printf "header = \"Authorization: Bearer %s\"\n" "$TOKEN" > "$cfg"
+echo "[]" > "$all"
+for zone in $ZONE_IDS; do
+  json=$(curl -fsS --max-time 20 --config "$cfg" \
+    "https://api.cloudflare.com/client/v4/zones/$zone/dns_records?type=SRV&per_page=1000")
+  [ "$(printf %s "$json" | jq -r .success)" = true ] || { echo "Cloudflare API error for zone $zone" >&2; exit 1; }
+  printf %s "$json" | jq --slurpfile acc "$all" "\$acc[0] + .result" > "$all.new" && mv "$all.new" "$all"
+done
+new=$(jq --arg b "$BACKEND" --arg r "$ROUTES_SUFFIX" -S "{
+  \"default-server\": null,
+  mappings: ([.[]
+    | select(.name | test(\"^_minecraft\\\\._tcp\\\\.\"))
+    | select(.data.port >= 25550 and .data.port <= 25580 and .data.port != 25565)
+    | {key: (.name | sub(\"^_minecraft\\\\._tcp\\\\.\"; \"\") | sub(\"\\\\.\" + \$r + \"$\"; \"\") | ascii_downcase), value: (\$b + \":\" + (.data.port|tostring))}
+  ] | from_entries)
+}" "$all")
+[ "$new" = "$(jq -S . "$OUT" 2>/dev/null)" ] && exit 0
+printf "%s\n" "$new" > "$OUT"   # in place: mc-router watches this inode
+echo "routes updated: $(printf %s "$new" | jq -c .mappings)"

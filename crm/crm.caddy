@@ -1,0 +1,17 @@
+# Twenty CRM de cottonstream.es · instalar como /opt/selfhost/caddy/sites/crm.caddy del Caddy central
+# (~/hosting/scripts/45-install-caddy-site.sh ~/hosting/crm/crm.caddy crm.caddy). DNS crm en gris hacia vps-proxy.
+
+http://crm.cottonstream.es {
+	redir https://{host}{uri} permanent
+}
+
+https://crm.cottonstream.es {
+	encode zstd gzip
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Robots-Tag "noindex, nofollow"
+	}
+
+	reverse_proxy cottonstream-crm:3000
+}

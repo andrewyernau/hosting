@@ -1,0 +1,41 @@
+# Kubo (ex Yernau Gaming). DNS grey-cloud to vps-proxy; Let's Encrypt via the central Caddy.
+http://kubo.csmak.com, http://gaming.yernau.com {
+	redir https://kubo.csmak.com{uri} permanent
+}
+
+# Old domain (until 2026-10-26): permanent redirect, path kept.
+https://gaming.yernau.com {
+	redir https://kubo.csmak.com{uri} permanent
+}
+
+https://kubo.csmak.com {
+	# No Cloudflare in front (grey DNS): set the client IP ourselves so it cannot be forged.
+	request_header CF-Connecting-IP {remote_host}
+
+	encode zstd gzip
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	handle /7ee57b73e6304805ae216e643215eff3.txt {
+		root * /etc/caddy/sites/seo/gaming
+		file_server
+	}
+
+	# Verified copies of installer downloads blocked from home during LaLiga matches (~/hosting/kubo-mirror).
+	handle /mirror/* {
+		root * /etc/caddy/sites
+		header Cache-Control "public, max-age=3600"
+		file_server
+	}
+
+	handle {
+		reverse_proxy gaming-web:8080 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+}

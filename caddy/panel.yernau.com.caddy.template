@@ -1,0 +1,22 @@
+# Install as /opt/selfhost/caddy/sites/pelican-panel.caddy only after the
+# Pelican container is healthy and its yernau Origin CA certificate is present.
+# This is intentionally a separate vhost and does not affect ajgambitopt.com.
+
+http://panel.yernau.com {
+	redir https://{host}{uri} permanent
+}
+
+https://panel.yernau.com {
+
+	encode zstd gzip
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+	}
+
+	# Alias supplied by the future Pelican compose project on selfhost_proxy.
+	reverse_proxy pelican-panel:80 {
+		header_up X-Forwarded-Proto https
+	}
+}

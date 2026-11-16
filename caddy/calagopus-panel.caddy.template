@@ -1,0 +1,38 @@
+# Installed as /opt/selfhost/caddy/sites/calagopus-panel.caddy by
+# scripts/40-migrate-pelican-to-calagopus.sh, replacing pelican-panel.caddy.
+# DNS is grey-cloud to vps-proxy; the central Caddy issues the Let's Encrypt cert (DNS-01).
+
+# panel.yernau.com is the pre-2026-10-26 name: permanent redirect, path kept.
+http://panel.kubo.csmak.com, http://panel.yernau.com {
+	redir https://panel.kubo.csmak.com{uri} permanent
+}
+
+https://panel.yernau.com {
+	redir https://panel.kubo.csmak.com{uri} permanent
+}
+
+https://panel.kubo.csmak.com {
+
+	encode zstd gzip
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+		# An app behind a login: keep it out of search results; kubo.csmak.com is the public site.
+		X-Robots-Tag "noindex, nofollow"
+	}
+
+	# Kubo icons, manifest and robots instead of the Calagopus defaults
+	# (published by scripts/37-deploy-search-indexing.sh from search-indexing/panel).
+	@brand path /robots.txt /favicon.ico /favicon-16x16.png /favicon-32x32.png /apple-touch-icon.png /android-chrome-192x192.png /android-chrome-512x512.png /site.webmanifest
+	handle @brand {
+		header Cache-Control "public, max-age=86400"
+		root * /etc/caddy/sites/seo/panel
+		file_server
+	}
+
+	handle {
+		# Alias supplied by the Calagopus compose project on selfhost_proxy.
+		reverse_proxy calagopus-panel:8000
+	}
+}

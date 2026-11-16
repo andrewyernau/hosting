@@ -1,0 +1,14 @@
+secrets/
+*.pass
+*.key
+.env
+.env.*
+!*.env.example
+*.dump
+node_modules/
+__pycache__/
+
+# Personal data kept off the public repo
+mail/users
+stack-map/stack-map.html
+stack-map/stack-map.png

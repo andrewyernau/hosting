@@ -1,0 +1,93 @@
+# Vaultwarden solo en la tailnet (https://vault.tail0ca86f.ts.net).
+#
+# Fronteras:
+# - Ningún puerto publicado en el host, ni en Caddy, ni en selfhost_proxy, ni en
+#   edge_tunnel/VPS. La única entrada es el nodo Tailscale "vault".
+# - vaultwarden comparte el netns del sidecar Tailscale y escucha solo en
+#   127.0.0.1:8080 de ese netns: solo `tailscale serve` (HTTPS 443) llega a él.
+# - Tailscale en modo kernel (no userspace): en userspace netstack reenviaría
+#   cualquier puerto de la IP 100.x a 127.0.0.1 y expondría HTTP plano.
+# - Funnel prohibido en serve.json.
+name: vaultwarden
+
+services:
+  vault-ts:
+    image: tailscale/tailscale:v1.104.2@sha256:b11583ad2e93e4671128538c88cf11f460444a5d7e449311dd1933a400ab849d
+    hostname: vault
+    restart: unless-stopped
+    environment:
+      # Solo se pasa en el primer alta (./vault.sh login); después se vacía.
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_HOSTNAME: vault
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_ACCEPT_DNS: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_AUTH_ONCE: "true"
+      # El host usa nftables; con iptables-legacy no se crean las reglas ts-input.
+      TS_DEBUG_FIREWALL_MODE: nftables
+    volumes:
+      - ts_state:/var/lib/tailscale
+      - ./serve.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - egress
+
+  vaultwarden:
+    image: vaultwarden/server:1.37.4@sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055
+    restart: unless-stopped
+    network_mode: service:vault-ts
+    depends_on:
+      - vault-ts
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    environment:
+      DOMAIN: https://vault.tail0ca86f.ts.net
+      ROCKET_ADDRESS: 127.0.0.1
+      ROCKET_PORT: "8080"
+      UMASK: "077"
+      # Cerrado salvo durante el alta de la cuenta (./vault.sh open-signups).
+      SIGNUPS_ALLOWED: ${SIGNUPS_ALLOWED:-false}
+      INVITATIONS_ALLOWED: "false"
+      # ADMIN_TOKEN no se define a propósito: así /admin está desactivado y no
+      # existe config.json que pueda sobrescribir estas variables.
+      SHOW_PASSWORD_HINT: "false"
+      PASSWORD_HINTS_ALLOWED: "false"
+      ICON_BLACKLIST_NON_GLOBAL_IPS: "true"
+      IP_HEADER: X-Forwarded-For
+      LOG_LEVEL: warn
+      EXTENDED_LOGGING: "true"
+    volumes:
+      # nocopy: si no, Docker copia el /data de la imagen (root:root 755) al
+      # volumen vacío y el usuario 10001 no puede escribir.
+      - type: volume
+        source: data
+        target: /data
+        volume:
+          nocopy: true
+
+networks:
+  # Red propia solo para salida a Internet (control plane/DERP de Tailscale e
+  # iconos). No se comparte con ningún otro proyecto.
+  egress:
+    name: vaultwarden_egress
+
+# external: los crea ./vault.sh init y `docker compose down -v` nunca los borra.
+volumes:
+  data:
+    name: vaultwarden_data
+    external: true
+  ts_state:
+    name: vaultwarden_ts_state
+    external: true

@@ -1,0 +1,28 @@
+groups:
+  - name: yernau-gaming
+    rules:
+      - alert: GamingApiDown
+        expr: up{job="gaming-api"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Kubo API is unavailable"}
+      - alert: GamingWorkerDown
+        expr: up{job="gaming-worker"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Kubo worker is unavailable"}
+      - alert: GamingProvisioningQueueBacklog
+        expr: yernau_gaming_jobs_pending > 5
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Kubo worker queue is growing"}
+      - alert: GamingJobFailures
+        expr: increase(yernau_gaming_job_outcomes_total{outcome="failed"}[15m]) > 0
+        labels: {severity: critical}
+        annotations: {summary: "A Kubo job exhausted its retries"}
+      - alert: GamingHighErrorRate
+        expr: sum(rate(yernau_gaming_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(yernau_gaming_http_requests_total[5m])), 0.001) > 0.05
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Kubo API error rate exceeds 5%"}
+

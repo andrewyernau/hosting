@@ -1,0 +1,19 @@
+global:
+  smtp_smarthost: mail.csmak.com:465
+  smtp_from: Monitor <no-reply@csmak.com>
+  smtp_auth_username: no-reply@csmak.com
+  smtp_auth_password_file: /run/smtp.pass
+  smtp_require_tls: false
+
+route:
+  receiver: support
+  group_by: [alertname]
+  group_wait: 1m
+  group_interval: 5m
+  repeat_interval: 12h
+
+receivers:
+  - name: support
+    email_configs:
+      - to: support@csmak.com
+        send_resolved: true

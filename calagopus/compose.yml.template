@@ -1,0 +1,94 @@
+# Calagopus Panel control plane. Installed as /opt/selfhost/calagopus/compose.yml by
+# scripts/40-migrate-pelican-to-calagopus.sh; image references are resolved to immutable
+# digests in the root-only .env. No host ports are published: Caddy central reaches the
+# panel over selfhost_proxy and Yernau Gaming over the internal gaming_panel_api network.
+name: calagopus
+
+services:
+  web:
+    # ghcr.io/calagopus/panel:<version> or :<version>-heavy (extension support), pinned by digest.
+    image: ${PANEL_IMAGE}
+    restart: unless-stopped
+    # The panel's shutdown handlers need longer than Docker's 10s default.
+    stop_grace_period: 40s
+    depends_on:
+      db: {condition: service_healthy}
+      cache: {condition: service_started}
+    environment:
+      TZ: Europe/Madrid
+      DATABASE_URL: postgresql://calagopus:${POSTGRES_PASSWORD}@db/panel
+      DATABASE_MIGRATE: "true"
+      REDIS_URL: redis://cache
+      BIND: 0.0.0.0
+      PORT: "8000"
+      APP_DEBUG: "false"
+      APP_PRIMARY: "true"
+      APP_LOG_DIRECTORY: /var/log/calagopus
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY}
+      APP_TRUSTED_PROXIES: ${CADDY_PROXY_IP},192.168.176.0/20
+      # Browsers reach Wings directly at node-01.yernau.com:8443, as with Pelican.
+      APP_ENABLE_WINGS_PROXY: "false"
+      APP_USE_DECRYPTION_CACHE: "false"
+      # Set to true in .env to allow extension changes only from the CLI (installed ones keep running).
+      APP_DISABLE_EXTENSION_MANAGEMENT: ${APP_DISABLE_EXTENSION_MANAGEMENT:-false}
+    # The panel reaches node-01's Wings API through the host side of selfhost_proxy while
+    # keeping the public FQDN for TLS validation (see scripts/12-pin-local-node-resolution.sh).
+    extra_hosts:
+      - "node-01.yernau.com:${NODE_01_PRIVATE_IP}"
+      - "es1.kubo.csmak.com:${NODE_01_PRIVATE_IP}"
+    volumes:
+      - ./data:/var/lib/calagopus
+      - ./logs:/var/log/calagopus
+      # Build artifacts of the heavy image; the regular image ignores them.
+      - ./build/binaries:/app/binaries
+      - ./build/translations:/app/translations
+      - ./build/extensions:/app/extensions
+      - ./build/extension-migrations:/app/repo/database/extension-migrations
+    networks:
+      proxy:
+        aliases: [calagopus-panel]
+      gaming-api:
+        aliases: [calagopus-panel-api]
+      backend: {}
+    security_opt: [no-new-privileges:true]
+
+  db:
+    image: ${POSTGRES_IMAGE}
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Madrid
+      POSTGRES_USER: calagopus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: panel
+      PGDATA: /data
+    volumes:
+      - ./postgres:/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U calagopus -d panel -q"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [backend]
+    security_opt: [no-new-privileges:true]
+
+  cache:
+    image: ${VALKEY_IMAGE}
+    restart: unless-stopped
+    # Reachable only on the internal backend network, which is why protected mode is off.
+    command: ["--protected-mode", "no", "--save", "60", "1"]
+    environment:
+      TZ: Europe/Madrid
+    volumes:
+      - ./cache:/data
+    networks: [backend]
+    security_opt: [no-new-privileges:true]
+
+networks:
+  proxy:
+    name: selfhost_proxy
+    external: true
+  gaming-api:
+    name: gaming_panel_api
+    external: true
+  backend:
+    internal: true

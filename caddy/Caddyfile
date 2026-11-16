@@ -1,0 +1,27 @@
+{
+	# Let's Encrypt via DNS-01 (Cloudflare API) for every site without an explicit
+	# `tls <cert> <key>`. Records are grey-cloud: browsers reach Caddy through vps-proxy.
+	# HTTP->HTTPS redirects stay explicit in each site file.
+	auto_https disable_redirects
+	acme_dns cloudflare {file./run/secrets/cloudflare_api_token}
+
+	# vps-proxy: the edge-tunnel container (10.203.66.2) forwards connections with
+	# a PROXY v2 header so Caddy sees the real client. Every other source (LAN,
+	# Tailscale) is accepted without a header. Only TCP crosses the tunnel, so no HTTP/3.
+	servers {
+		protocols h1 h2
+		listener_wrappers {
+			proxy_protocol {
+				timeout 5s
+				allow 10.203.66.2/32
+				fallback_policy skip
+			}
+			tls
+		}
+	}
+	log {
+		output stdout
+		format json
+	}
+}
+import /etc/caddy/sites/*.caddy

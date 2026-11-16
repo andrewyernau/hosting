@@ -1,0 +1,70 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+:root {
+  --bg: #0d1117; --fg: #e6edf3; --muted: #8b949e; --card: #161b22; --border: #30363d;
+  --pub: #3fb950; --per: #58a6ff; --game: #f0883e; --ts: #a371f7; --wg: #2dd4bf;
+  --r: 8px; --sans: Inter, "Segoe UI", system-ui, sans-serif; --mono: "JetBrains Mono", "DejaVu Sans Mono", monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px; width: 776px; background: var(--bg); color: var(--fg); font-family: var(--sans); }
+.cols { display: grid; grid-template-columns: 1fr 200px; column-gap: 16px; }
+.lane-title { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; text-align: center; }
+.node { border: 1px solid var(--border); border-radius: var(--r); padding: 8px 12px; text-align: center; background: var(--card); }
+.node b { display: block; font-size: 14px; }
+small { display: block; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.line { width: 2px; height: 22px; margin: 0 auto; background: var(--border); }
+.line.ts { background: var(--ts); }
+.wg { border: 2px dashed var(--wg); border-radius: var(--r); padding: 10px 12px; background: color-mix(in srgb, var(--wg) 8%, transparent); }
+.wg h4 { margin: 0 0 8px; color: var(--wg); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; text-align: center; }
+.wg .row { display: flex; align-items: center; gap: 10px; }
+.wg .row .node { flex: 1; border-color: var(--wg); }
+.wg .pipe { flex: 1.2; height: 4px; border-radius: 2px; background: var(--wg); }
+.wg-drop { width: 4px; height: 22px; margin: 0 auto; background: var(--wg); }
+.host { border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px 16px; display: grid; grid-template-columns: 1fr 200px; column-gap: 16px; }
+.host > .label { grid-column: 1 / span 2; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.group { border-radius: var(--r); padding: 10px; border: 1px solid; margin-top: 10px; }
+.group:first-child { margin-top: 0; }
+.group h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+.chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.chip { background: var(--card); border-radius: 6px; padding: 6px 8px; border: 1px solid var(--border); }
+.chip b { display: block; font-size: 13px; font-weight: 600; }
+.pub { border-color: color-mix(in srgb, var(--pub) 50%, transparent); } .pub h4 { color: var(--pub); }
+.per { border-color: color-mix(in srgb, var(--per) 50%, transparent); } .per h4 { color: var(--per); }
+.game { border-color: color-mix(in srgb, var(--game) 50%, transparent); } .game h4 { color: var(--game); }
+.ts { border-color: color-mix(in srgb, var(--ts) 50%, transparent); } .ts h4 { color: var(--ts); }
+.ts .chips { grid-template-columns: 1fr; }
+.legend { display: flex; gap: 20px; justify-content: center; margin-top: 14px; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+</style></head><body>
+<div class="cols">
+  <div>
+    <div class="lane-title">Public path</div>
+    <div class="node"><b>Internet</b></div>
+    <div class="line"></div>
+    <div class="node"><b>HAProxy, mc-router</b><small>Edge VPS</small></div>
+    <div class="wg-drop"></div>
+    <div class="wg"><h4>WireGuard tunnel</h4>
+      <div class="row"><div class="node"><b>WireGuard</b><small>VPS end</small></div><div class="pipe"></div><div class="node"><b>WireGuard</b><small>Home end</small></div></div>
+    </div>
+    <div class="wg-drop"></div>
+  </div>
+  <div style="display:flex; flex-direction:column">
+    <div class="lane-title">Private path</div>
+    <div class="node"><b>Tailscale</b><small>Phone, PC</small></div>
+    <div class="line ts" style="flex:1"></div>
+  </div>
+</div>
+<div class="host">
+  <div class="label">Home server</div>
+  <div>
+    <div class="node"><b>Caddy</b><small>Reverse proxy</small></div>
+    <div style="height:10px"></div>
+    <div class="group pub"><h4>Public</h4><div class="chips"><div class="chip"><b>CSMAK</b><small>Website</small></div><div class="chip"><b>Kubo</b><small>Website</small></div><div class="chip"><b>Nutria</b><small>Website</small></div><div class="chip"><b>Kebab Oriental</b><small>Website</small></div><div class="chip"><b>AJ Gambito</b><small>Website</small></div><div class="chip"><b>Portfolio</b><small>Website</small></div><div class="chip"><b>Tracker</b><small>Website</small></div></div></div><div class="group game"><h4>Games</h4><div class="chips"><div class="chip"><b>Calagopus Panel</b></div><div class="chip"><b>Calagopus Wings</b></div><div class="chip"><b>Docker game servers</b></div></div></div><div class="group per"><h4>Personal</h4><div class="chips"><div class="chip"><b>CouchDB LiveSync</b></div><div class="chip"><b>Bulwark Webmail</b></div><div class="chip"><b>Stalwart Mail</b></div></div></div>
+  </div>
+  <div><div class="group ts"><h4>Tailscale only</h4><div class="chips"><div class="chip"><b>Vaultwarden</b></div><div class="chip"><b>Orbit</b></div><div class="chip"><b>T3 Code</b></div><div class="chip"><b>Syncthing</b></div><div class="chip"><b>OpenSSH</b></div></div></div></div>
+</div>
+<div class="legend">
+  <span><i style="background:var(--wg)"></i>WireGuard</span>
+  <span><i style="background:var(--ts)"></i>Tailscale</span>
+  <span><i style="background:var(--border)"></i>Internet</span>
+</div>
+</body></html>

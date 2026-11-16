@@ -1,0 +1,15 @@
+#!/bin/sh
+# Refresh the Cloudflare IPv4 ranges used by nftables (and HAProxy) on vps-proxy.
+set -eu
+out=/etc/nftables.d/cloudflare-v4.nft
+tmp=$(mktemp)
+trap "rm -f $tmp" EXIT
+curl -fsS --max-time 20 https://www.cloudflare.com/ips-v4 | grep -E "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$" > "$tmp.list"
+[ "$(wc -l < "$tmp.list")" -ge 10 ] || { echo "Suspiciously short Cloudflare list" >&2; exit 1; }
+printf "elements = { %s }\n" "$(paste -sd, "$tmp.list" | sed "s/,/, /g")" > "$tmp"
+rm -f "$tmp.list"
+cmp -s "$tmp" "$out" 2>/dev/null && exit 0
+install -m644 "$tmp" "$out"
+nft -c -f /etc/nftables.conf
+nft -f /etc/nftables.conf
+echo "Cloudflare ranges updated"

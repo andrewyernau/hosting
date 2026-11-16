@@ -1,0 +1,36 @@
+[Unit]
+Description=mc-router: Minecraft hostname router on :25565 -> home via WireGuard
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/mc-router -port 25565 -routes-config /etc/mc-router/routes.json -routes-config-watch -connection-rate-limit 5
+Restart=on-failure
+DynamicUser=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+MemoryMax=128M
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

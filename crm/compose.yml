@@ -1,0 +1,99 @@
+# Twenty CRM for cottonstream.es (https://crm.cottonstream.es via the central Caddy, site crm.caddy).
+# Single-workspace mode: the first sign-up creates the workspace, later users need an invitation.
+# Secrets in secrets/ (600), created by ./crm.sh init. See README.md.
+name: crm
+
+x-twenty: &twenty
+  # v2.58.2, provenance: twentyhq/twenty tag twenty/v2.58.0 line, Docker Hub twentycrm/twenty:v2.58.2
+  image: twentycrm/twenty:v2.58.2@sha256:cdf2da26925fd4f9a80eb6143f1815f74d93318b509dd20fe6b4f274f57a1c55
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  env_file: [./secrets/twenty.env]
+  environment: &twenty-env
+    SERVER_URL: https://crm.cottonstream.es
+    REDIS_URL: redis://crm-redis:6379
+    STORAGE_TYPE: local
+    # Everything declared here; the admin panel shows the values but does not override them.
+    IS_CONFIG_VARIABLES_IN_DB_ENABLED: "false"
+    IS_MULTIWORKSPACE_ENABLED: "false"
+    # System mail (invitations, password resets) as no-reply@cottonstream.es through Stalwart -> Resend (cottonstream).
+    EMAIL_DRIVER: smtp
+    EMAIL_SMTP_HOST: mail.cottonstream.es
+    EMAIL_SMTP_PORT: "465"
+    EMAIL_SMTP_USER: no-reply@cottonstream.es
+    EMAIL_FROM_ADDRESS: no-reply@cottonstream.es
+    EMAIL_FROM_NAME: Cotton Stream CRM
+    EMAIL_SYSTEM_ADDRESS: no-reply@cottonstream.es
+    TELEMETRY_ENABLED: "false"
+    ANALYTICS_ENABLED: "false"
+  volumes:
+    - server_data:/app/packages/twenty-server/.local-storage
+  depends_on:
+    crm-db: {condition: service_healthy}
+    crm-redis: {condition: service_healthy}
+
+services:
+  crm-server:
+    <<: *twenty
+    stop_grace_period: 120s
+    healthcheck:
+      test: curl --fail -s http://localhost:3000/healthz
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    networks:
+      default: {}
+      proxy:
+        aliases: ["cottonstream-crm"]
+    mem_limit: 1536m
+
+  crm-worker:
+    <<: *twenty
+    command: ["yarn", "worker:prod"]
+    environment:
+      <<: *twenty-env
+      DISABLE_DB_MIGRATIONS: "true"
+      DISABLE_CRON_JOBS_REGISTRATION: "true"
+    depends_on:
+      crm-db: {condition: service_healthy}
+      crm-server: {condition: service_healthy}
+    mem_limit: 1g
+
+  crm-db:
+    image: postgres:16-alpine@sha256:f377d590e5474681d4d7838635031a2b50647923b7abfa803ce9b5ff35d5c663
+    restart: unless-stopped
+    env_file: [./secrets/db.env]
+    environment:
+      POSTGRES_DB: twenty
+      POSTGRES_USER: twenty
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U twenty -d twenty -h localhost
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 512m
+
+  crm-redis:
+    image: redis:7.4-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+    restart: unless-stopped
+    command: ["--maxmemory-policy", "noeviction", "--save", "", "--appendonly", "no"]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+
+volumes:
+  db_data:
+  server_data:
+
+networks:
+  proxy:
+    name: selfhost_proxy
+    external: true

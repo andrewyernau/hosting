@@ -1,0 +1,20 @@
+[Unit]
+Description=restic REST server (append-only, loopback; reached through an SSH tunnel)
+After=srv-backups.mount
+RequiresMountsFor=/srv/backups
+
+[Service]
+User=restic-srv
+ExecStart=/usr/bin/restic-rest-server --path /srv/backups/repos --listen 127.0.0.1:8000 --append-only --no-auth
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/backups/repos
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+MemoryMax=300M
+
+[Install]
+WantedBy=multi-user.target
